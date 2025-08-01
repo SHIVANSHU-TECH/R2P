@@ -3,7 +3,7 @@ import pdfparse from 'pdf-parse';
 import * as mammoth from 'mammoth';
 
 /**
- * Enhanced resume parser with 100% extraction capabilities
+ * Enhanced resume parser with improved extraction capabilities
  * @param {Buffer} fileBuffer - The file buffer to parse
  * @param {string} fileType - The file type ('pdf' or 'docx')
  * @returns {Object} Structured resume data
@@ -62,73 +62,122 @@ const cleanText = (text) => {
  * @returns {Object} Personal information
  */
 const extractPersonalInfoEnhanced = (text) => {
-  // Email pattern
-  const email = text.match(/[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}/)?.[0] || '';
+  // Email pattern - more comprehensive
+  const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  const email = emailMatch ? emailMatch[0] : '';
   
-  // Phone pattern - handles various formats
-  const phone = text.match(/(\+\d{1,3}[\s.-]?)?(\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}/)?.[0] || '';
+  // Phone pattern - handles various formats including international
+  const phonePatterns = [
+    /(\+\d{1,3}[\s.-]?)?\(?\d{3}\)?\s?[\s.-]?\d{3}[\s.-]?\d{4}/,
+    /(\+\d{1,3}[\s.-]?)?\d{3}[\s.-]?\d{3}[\s.-]?\d{4}/,
+    /(\+\d{1,3}[\s.-]?)?\d{10}/
+  ];
   
-  // Name extraction with multiple strategies
-  let name = '';
-  
-  // Strategy 1: Look for ALL CAPS name at the beginning (like SHIVANSHUSHUKLA)
-  const nameMatch1 = text.match(/^([A-Z][A-Z\s]+)(?=\n|$)/);
-  if (nameMatch1) {
-    name = nameMatch1[0].trim();
-  }
-  
-  // Strategy 1.5: Look for specific name pattern like SHIVANSHUSHUKLA
-  if (!name) {
-    const specificNameMatch = text.match(/^([A-Z]{10,20})(?=\n|$)/);
-    if (specificNameMatch) {
-      name = specificNameMatch[0].trim();
+  let phone = '';
+  for (const pattern of phonePatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      phone = match[0];
+      break;
     }
   }
   
-  // Strategy 2: Look for name pattern in first few lines
+  // Name extraction with multiple strategies
+  let name = '';
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  
+  // Strategy 1: First non-empty line that looks like a name
+  for (const line of lines.slice(0, 5)) {
+    if (line.length > 2 && line.length < 50 && 
+        !line.includes('@') && 
+        !line.includes('http') && 
+        !line.includes('www') &&
+        !line.match(/^\d/) &&
+        !line.includes('Resume') &&
+        !line.includes('CV') &&
+        line.match(/^[A-Za-z\s]+$/)) {
+      name = line;
+      break;
+    }
+  }
+  
+  // Strategy 2: Look for name patterns
   if (!name) {
-    const lines = text.split('\n').slice(0, 5);
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      // Look for name pattern: First letter capitalized, rest lowercase, 2-4 words
-      const nameMatch2 = trimmedLine.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})$/);
-      if (nameMatch2 && trimmedLine.length > 3 && trimmedLine.length < 50) {
-        name = nameMatch2[0];
+    const namePatterns = [
+      /^([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/m,
+      /^([A-Z]{2,}\s+[A-Z]{2,})/m,
+      /Name[:\s]+([A-Za-z\s]+)/i
+    ];
+    
+    for (const pattern of namePatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        name = match[1].trim();
         break;
       }
     }
   }
   
-  // Strategy 3: Look for name before email
-  if (!name) {
-    const emailIndex = text.indexOf(email);
-    if (emailIndex > 0) {
-      const beforeEmail = text.substring(0, emailIndex);
-      const lines = beforeEmail.split('\n');
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i].trim();
-        if (line && line.length > 2 && line.length < 50 && !line.includes('@') && !line.includes('http')) {
-          name = line;
-          break;
-        }
-      }
+  // LinkedIn URL pattern
+  const linkedinPatterns = [
+    /linkedin\.com\/in\/([a-zA-Z0-9_-]+)/i,
+    /linkedin\.com\/([a-zA-Z0-9_-]+)/i,
+    /(https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+/i
+  ];
+  
+  let linkedin = '';
+  for (const pattern of linkedinPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      linkedin = match[0].includes('http') ? match[0] : `https://${match[0]}`;
+      break;
     }
   }
   
-  // LinkedIn URL pattern
-  const linkedinMatch = text.match(/(?:linkedin\.com\/in\/|linkedin\.com\/|linkedin:?)([a-zA-Z0-9_-]+)/i);
-  const linkedin = linkedinMatch ? linkedinMatch[0] : '';
-  
   // GitHub URL pattern
-  const githubMatch = text.match(/(?:github\.com\/|github:?)([a-zA-Z0-9_-]+)/i);
-  const github = githubMatch ? githubMatch[0] : '';
+  const githubPatterns = [
+    /github\.com\/([a-zA-Z0-9_-]+)/i,
+    /(https?:\/\/)?(?:www\.)?github\.com\/[a-zA-Z0-9_-]+/i
+  ];
   
-  // Address pattern
-  const addressMatch = text.match(/(\d+\s+[\w\s]+(?:Avenue|Lane|Road|Boulevard|Drive|Street|Ave|Ln|Rd|Blvd|Dr|St)\.?(?:\s+[A-Za-z]+,\s+[A-Z]{2}\s+\d{5}))/i);
-  const address = addressMatch ? addressMatch[0].trim() : '';
+  let github = '';
+  for (const pattern of githubPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      github = match[0].includes('http') ? match[0] : `https://${match[0]}`;
+      break;
+    }
+  }
+  
+  // Address pattern - more flexible
+  const addressPatterns = [
+    /\d+\s+[A-Za-z\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln)[,\s]+[A-Za-z\s]+[,\s]+[A-Z]{2}\s+\d{5}/i,
+    /[A-Za-z\s]+,\s*[A-Za-z\s]+,\s*[A-Z]{2}\s+\d{5}/i,
+    /[A-Za-z\s]+,\s*[A-Z]{2}\s+\d{5}/i
+  ];
+  
+  let address = '';
+  for (const pattern of addressPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      address = match[0].trim();
+      break;
+    }
+  }
   
   // Website/portfolio URL
-  const website = text.match(/(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9][-a-zA-Z0-9]{0,62}(?:\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+\.?)/i)?.[0] || '';
+  const websitePatterns = [
+    /(https?:\/\/)?(?:www\.)?[a-zA-Z0-9][-a-zA-Z0-9]{0,62}(?:\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+\.?/i
+  ];
+  
+  let website = '';
+  for (const pattern of websitePatterns) {
+    const match = text.match(pattern);
+    if (match && !match[0].includes('linkedin') && !match[0].includes('github')) {
+      website = match[0].includes('http') ? match[0] : `https://${match[0]}`;
+      break;
+    }
+  }
 
   return { 
     name,
@@ -153,76 +202,100 @@ const extractEducationEnhanced = (text) => {
   const educationSection = extractSectionEnhanced(text, ['EDUCATION', 'ACADEMIC', 'ACADEMIC BACKGROUND', 'EDUCATIONAL BACKGROUND']);
   
   if (educationSection) {
-    // Parse education section
-    const entries = educationSection.split(/\n(?=[A-Z][A-Z\s]+)/);
+    const lines = educationSection.split('\n').filter(line => line.trim().length > 0);
     
-    for (const entry of entries) {
-      if (entry.trim().length === 0) continue;
+    let currentEntry = null;
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
       
-      const lines = entry.split('\n').filter(line => line.trim().length > 0);
-      if (lines.length === 0) continue;
+      // Check if this line contains institution or degree keywords
+      const institutionKeywords = ['University', 'College', 'School', 'Institute', 'Academy'];
+      const degreeKeywords = ['Bachelor', 'Master', 'PhD', 'BSc', 'MSc', 'MBA', 'BBA', 'BS', 'MS', 'MA', 'Ph.D', 'B.Tech', 'M.Tech', 'B.E', 'M.E', 'B.Com', 'M.Com', 'B.A', 'M.A'];
       
-      const firstLine = lines[0];
+      const hasInstitution = institutionKeywords.some(keyword => trimmedLine.includes(keyword));
+      const hasDegree = degreeKeywords.some(keyword => trimmedLine.includes(keyword));
       
-      // Extract institution
-      const institutionMatch = firstLine.match(/([A-Z][A-Z\s]+)/);
-      const institution = institutionMatch ? institutionMatch[0].trim() : '';
-      
-      // Extract degree
-      const degreeMatch = firstLine.match(/([A-Z][a-zA-Z\s]+(?:Bachelor|Master|PhD|BSc|MSc|MBA|BBA|BS|MS|MA|Ph\.D|B\.Tech|M\.Tech|B\.E|M\.E|B\.Com|M\.Com|B\.A|M\.A|Science|Engineering|Technology|Computer|Information|Business|Arts|Commerce))/);
-      const degree = degreeMatch ? degreeMatch[0].trim() : '';
-      
-      // Extract dates
-      const dateMatch = firstLine.match(/(\d{4}(?:-\d{4}|-\s*Present)?)/);
-      const dates = dateMatch ? dateMatch[0] : '';
-      
-      // Extract GPA
-      const gpaMatch = firstLine.match(/GPA[:\s]*(\d+\.\d+)/i);
-      const gpa = gpaMatch ? gpaMatch[1] : '';
-      
-      // Description is everything else
-      const description = lines.slice(1).join('\n').trim();
-      
-      education.push({
-        institution,
-        degree,
-        field: '',
-        startDate: dates.split('-')[0] || '',
-        endDate: dates.includes('-') ? dates.split('-')[1] : dates,
-        gpa,
-        description
-      });
+      if (hasInstitution || hasDegree) {
+        // Start a new education entry
+        if (currentEntry) {
+          education.push(currentEntry);
+        }
+        
+        currentEntry = {
+          institution: hasInstitution ? trimmedLine : '',
+          degree: hasDegree ? trimmedLine : '',
+          field: '',
+          startDate: '',
+          endDate: '',
+          gpa: '',
+          description: ''
+        };
+        
+        // Extract dates from the same line
+        const dateMatch = trimmedLine.match(/(\d{4})\s*[-–]\s*(\d{4}|Present)/i);
+        if (dateMatch) {
+          currentEntry.startDate = dateMatch[1];
+          currentEntry.endDate = dateMatch[2];
+        }
+        
+        // Extract GPA
+        const gpaMatch = trimmedLine.match(/GPA[:\s]*(\d+\.\d+)/i);
+        if (gpaMatch) {
+          currentEntry.gpa = gpaMatch[1];
+        }
+      } else if (currentEntry) {
+        // Add to description of current entry
+        if (trimmedLine.match(/^\d{4}/)) {
+          // This might be a date line
+          const dateMatch = trimmedLine.match(/(\d{4})\s*[-–]\s*(\d{4}|Present)/i);
+          if (dateMatch) {
+            currentEntry.startDate = dateMatch[1];
+            currentEntry.endDate = dateMatch[2];
+          }
+        } else {
+          currentEntry.description += (currentEntry.description ? ' ' : '') + trimmedLine;
+        }
+      }
+    }
+    
+    if (currentEntry) {
+      education.push(currentEntry);
     }
   }
   
   // Strategy 2: Look for education patterns in the entire text
   if (education.length === 0) {
     const educationPatterns = [
-      // Pattern 1: Institution followed by degree and dates
-      /([A-Z][A-Z\s]+)\s*([A-Z][a-zA-Z\s]+(?:Bachelor|Master|Science|Engineering|Technology|Computer))\s*(\d{4}-\d{4})/g,
-      // Pattern 2: Institution with GPA (like GGSIPU Bachelor of Science in Computer Science (GPA: 4.00 / 4.00) 2020-2024)
-      /([A-Z][A-Z\s]+)\s*([A-Z][a-zA-Z\s]+(?:Bachelor|Master|Science|Engineering|Technology|Computer))\s*\(GPA[:\s]*(\d+\.\d+)\s*\/\s*\d+\.\d+\)\s*(\d{4}-\d{4})/g,
-      // Pattern 3: Simple institution and dates
-      /([A-Z][A-Z\s]+)\s*(\d{4}-\d{4})/g,
-      // Pattern 4: Specific pattern for GGSIPU format
-      /(GGSIPU)\s*([A-Z][a-zA-Z\s]+(?:Bachelor|Master|Science|Engineering|Technology|Computer))\s*\(GPA[:\s]*(\d+\.\d+)\s*\/\s*\d+\.\d+\)\s*(\d{4}-\d{4})/g
+      // Pattern for "Institution, Degree, Year"
+      /([A-Z][A-Za-z\s]+(?:University|College|School|Institute))[,\s]+([A-Za-z\s]+(?:Bachelor|Master|Science|Engineering|Technology|Computer))[,\s]*(\d{4}[-–]\d{4}|\d{4})/g,
+      // Pattern for "Degree from Institution"
+      /([A-Za-z\s]+(?:Bachelor|Master|Science|Engineering|Technology|Computer))[,\s]+(?:from\s+)?([A-Z][A-Za-z\s]+(?:University|College|School|Institute))[,\s]*(\d{4}[-–]\d{4}|\d{4})/g
     ];
     
     for (const pattern of educationPatterns) {
       let match;
       while ((match = pattern.exec(text)) !== null) {
-        const institution = match[1];
-        const degree = match[2] || '';
-        const gpa = match[3] || '';
-        const dates = match[4] || match[2] || '';
+        const [, first, second, dates] = match;
+        
+        // Determine which is institution and which is degree
+        const institutionKeywords = ['University', 'College', 'School', 'Institute'];
+        const isFirstInstitution = institutionKeywords.some(keyword => first.includes(keyword));
+        
+        const institution = isFirstInstitution ? first.trim() : second.trim();
+        const degree = isFirstInstitution ? second.trim() : first.trim();
+        
+        const dateMatch = dates.match(/(\d{4})(?:[-–](\d{4}))?/);
+        const startDate = dateMatch ? dateMatch[1] : '';
+        const endDate = dateMatch && dateMatch[2] ? dateMatch[2] : '';
         
         education.push({
-          institution: institution.trim(),
-          degree: degree.trim(),
+          institution,
+          degree,
           field: '',
-          startDate: dates.split('-')[0] || '',
-          endDate: dates.includes('-') ? dates.split('-')[1] : dates,
-          gpa,
+          startDate,
+          endDate,
+          gpa: '',
           description: ''
         });
       }
@@ -241,84 +314,136 @@ const extractExperienceEnhanced = (text) => {
   const experience = [];
   
   // Strategy 1: Look for experience section
-  const experienceSection = extractSectionEnhanced(text, ['EXPERIENCE', 'WORK EXPERIENCE', 'EMPLOYMENT', 'PROFESSIONAL EXPERIENCE', 'WORK HISTORY']);
+  const experienceSection = extractSectionEnhanced(text, ['EXPERIENCE', 'WORK EXPERIENCE', 'EMPLOYMENT', 'PROFESSIONAL EXPERIENCE', 'WORK HISTORY', 'CAREER']);
   
   if (experienceSection) {
-    // Parse experience section
-    const entries = experienceSection.split(/\n(?=[A-Z][A-Z\s]+)/);
+    const lines = experienceSection.split('\n').filter(line => line.trim().length > 0);
     
-    for (const entry of entries) {
-      if (entry.trim().length === 0) continue;
+    let currentEntry = null;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
       
-      const lines = entry.split('\n').filter(line => line.trim().length > 0);
-      if (lines.length === 0) continue;
+      // Check if this line looks like a job title or company
+      const jobTitleKeywords = ['Developer', 'Engineer', 'Manager', 'Analyst', 'Specialist', 'Coordinator', 'Assistant', 'Director', 'Lead', 'Senior', 'Junior', 'Intern', 'Consultant', 'Architect', 'Designer', 'Administrator', 'Officer', 'Representative', 'Associate', 'Founder', 'CEO', 'CTO', 'VP'];
+      const companyKeywords = ['Inc', 'Corp', 'LLC', 'Ltd', 'Company', 'Technologies', 'Solutions', 'Systems', 'Software', 'Tech', 'Labs', 'Studio', 'Agency', 'Consulting', 'Services'];
       
-      const firstLine = lines[0];
+      const hasJobTitle = jobTitleKeywords.some(keyword => line.includes(keyword));
+      const hasCompany = companyKeywords.some(keyword => line.includes(keyword));
       
-      // Extract company name
-      const companyMatch = firstLine.match(/([A-Z][A-Z\s]+)/);
-      const company = companyMatch ? companyMatch[0].trim() : '';
+      // Check if line contains dates
+      const hasDate = line.match(/\d{4}/);
       
-      // Extract job title
-      const titleMatch = firstLine.match(/([A-Z][a-zA-Z\s]+(?:Developer|Engineer|Manager|Analyst|Specialist|Coordinator|Assistant|Director|Lead|Senior|Junior|Full Stack|Frontend|Backend|DevOps|Data|Software|Web|Mobile|UI|UX|Product|Project|Business|Marketing|Sales|HR|Finance|Operations|Consultant|Architect|Designer|Administrator|Coordinator|Officer|Representative|Associate|Intern|Trainee|Founder))/);
-      const title = titleMatch ? titleMatch[0].trim() : '';
-      
-      // Extract dates
-      const dateMatch = firstLine.match(/(\d{4}(?:-\d{4}|-\s*Present)?)/);
-      const dates = dateMatch ? dateMatch[0] : '';
-      
-      // Description is everything else
-      const description = lines.slice(1).join('\n').trim();
-      
-      experience.push({
-        title,
-        company,
-        location: '',
-        startDate: dates.split('-')[0] || '',
-        endDate: dates.includes('-') ? dates.split('-')[1] : dates,
-        description
-      });
+      if ((hasJobTitle || hasCompany) && !hasDate) {
+        // Start a new experience entry
+        if (currentEntry) {
+          experience.push(currentEntry);
+        }
+        
+        currentEntry = {
+          title: hasJobTitle ? line : '',
+          company: hasCompany ? line : '',
+          location: '',
+          startDate: '',
+          endDate: '',
+          description: ''
+        };
+        
+        // Check next line for additional info
+        if (i + 1 < lines.length) {
+          const nextLine = lines[i + 1].trim();
+          const nextHasJobTitle = jobTitleKeywords.some(keyword => nextLine.includes(keyword));
+          const nextHasCompany = companyKeywords.some(keyword => nextLine.includes(keyword));
+          
+          if (hasJobTitle && nextHasCompany) {
+            currentEntry.company = nextLine;
+            i++; // Skip next line as we've processed it
+          } else if (hasCompany && nextHasJobTitle) {
+            currentEntry.title = nextLine;
+            i++; // Skip next line as we've processed it
+          }
+        }
+      } else if (hasDate && currentEntry) {
+        // This line contains dates
+        const dateMatch = line.match(/(\d{4})\s*[-–]\s*(\d{4}|Present)/i);
+        if (dateMatch) {
+          currentEntry.startDate = dateMatch[1];
+          currentEntry.endDate = dateMatch[2];
+        }
+      } else if (currentEntry && line.length > 10) {
+        // Add to description
+        if (line.startsWith('•') || line.startsWith('-') || line.startsWith('*')) {
+          currentEntry.description += (currentEntry.description ? '\n' : '') + line;
+        } else {
+          currentEntry.description += (currentEntry.description ? ' ' : '') + line;
+        }
+      }
+    }
+    
+    if (currentEntry) {
+      experience.push(currentEntry);
     }
   }
   
   // Strategy 2: Look for experience patterns in the entire text
   if (experience.length === 0) {
-    const lines = text.split('\n');
+    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
     
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
+      const line = lines[i];
       
-      // Look for company names (ALL CAPS) - including specific ones like CollegeX Connect, SalesForce, Mittiland, GDSC, Vital-Vistara
-      if (line.match(/^[A-Z][A-Z\s-]+$/) && line.length > 3 && line.length < 50) {
-        const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
-        const nextNextLine = i + 2 < lines.length ? lines[i + 2].trim() : '';
+      // Look for job titles followed by company and dates
+      const jobTitlePattern = /(Software Developer|Web Developer|Frontend Developer|Backend Developer|Full Stack Developer|Data Scientist|Product Manager|Project Manager|Business Analyst|Marketing Manager|Sales Representative|HR Manager|Financial Analyst|Graphic Designer|UX Designer|UI Designer|DevOps Engineer|System Administrator|Database Administrator|Network Engineer|Security Analyst|Quality Assurance|Technical Writer|Content Writer|Social Media Manager|Digital Marketing Specialist|SEO Specialist|Customer Service Representative|Operations Manager|Supply Chain Manager|Research Analyst|Consultant|Intern|Associate|Lead|Senior|Junior)/i;
+      
+      const jobMatch = line.match(jobTitlePattern);
+      if (jobMatch) {
+        const title = jobMatch[0];
+        let company = '';
+        let startDate = '';
+        let endDate = '';
+        let description = '';
         
-        // Check if next line contains job title
-        if (nextLine && (nextLine.includes('Developer') || nextLine.includes('Founder') || nextLine.includes('Intern') || nextLine.includes('Associate') || nextLine.includes('Lead') || nextLine.includes('Product Lead'))) {
-          const titleMatch = nextLine.match(/([A-Z][a-zA-Z\s]+(?:Developer|Founder|Intern|Associate|Lead))/);
-          const title = titleMatch ? titleMatch[0].trim() : nextLine;
-          
-          // Extract dates from the next line
-          const dateMatch = nextNextLine.match(/(\d{4}–\d{4}|\d{4}–\s*Present)/);
-          const dates = dateMatch ? dateMatch[0] : '';
-          
-          // Collect description from subsequent lines
-          let description = '';
-          let j = i + 3;
-          while (j < lines.length && lines[j].trim().startsWith('*')) {
-            description += lines[j].trim() + ' ';
-            j++;
+        // Look for company in the same line or next line
+        const companyPattern = /([A-Z][A-Za-z\s]+(?:Inc|Corp|LLC|Ltd|Company|Technologies|Solutions|Systems|Software|Tech|Labs|Studio|Agency|Consulting|Services))/;
+        const companyMatch = line.match(companyPattern);
+        if (companyMatch) {
+          company = companyMatch[0];
+        } else if (i + 1 < lines.length) {
+          const nextLine = lines[i + 1];
+          const nextCompanyMatch = nextLine.match(companyPattern);
+          if (nextCompanyMatch) {
+            company = nextCompanyMatch[0];
           }
-          
-          experience.push({
-            title,
-            company: line,
-            location: '',
-            startDate: dates.split('–')[0] || '',
-            endDate: dates.includes('–') ? dates.split('–')[1] : dates,
-            description: description.trim()
-          });
         }
+        
+        // Look for dates in nearby lines
+        for (let j = i; j < Math.min(i + 3, lines.length); j++) {
+          const dateMatch = lines[j].match(/(\d{4})\s*[-–]\s*(\d{4}|Present)/i);
+          if (dateMatch) {
+            startDate = dateMatch[1];
+            endDate = dateMatch[2];
+            break;
+          }
+        }
+        
+        // Look for description in following lines
+        for (let j = i + 1; j < Math.min(i + 10, lines.length); j++) {
+          const descLine = lines[j];
+          if (descLine.startsWith('•') || descLine.startsWith('-') || descLine.startsWith('*')) {
+            description += (description ? '\n' : '') + descLine;
+          } else if (descLine.match(/^[A-Z]/) && descLine.length > 20) {
+            break; // Likely start of next section
+          }
+        }
+        
+        experience.push({
+          title,
+          company,
+          location: '',
+          startDate,
+          endDate,
+          description
+        });
       }
     }
   }
@@ -335,41 +460,58 @@ const extractSkillsEnhanced = (text) => {
   const skills = [];
   
   // Strategy 1: Look for skills section
-  const skillsSection = extractSectionEnhanced(text, ['SKILLS', 'TECHNICAL SKILLS', 'COMPETENCIES', 'TECHNOLOGIES', 'PROGRAMMING LANGUAGES', 'TECHNICAL COMPETENCIES']);
+  const skillsSection = extractSectionEnhanced(text, ['SKILLS', 'TECHNICAL SKILLS', 'COMPETENCIES', 'TECHNOLOGIES', 'PROGRAMMING LANGUAGES', 'TECHNICAL COMPETENCIES', 'CORE COMPETENCIES']);
   
   if (skillsSection) {
     // Split skills by common delimiters and clean them
     const skillsList = skillsSection
-      .split(/[,|•\n]/)
+      .split(/[,|•\n\-\*]/)
       .map(skill => skill.trim())
-      .filter(skill => skill.length > 0 && skill.length < 50 && !skill.match(/^(SKILLS|TECHNICAL|COMPETENCIES|TECHNOLOGIES|PROGRAMMING|LANGUAGES)$/i));
+      .filter(skill => skill.length > 1 && skill.length < 50 && !skill.match(/^(SKILLS|TECHNICAL|COMPETENCIES|TECHNOLOGIES|PROGRAMMING|LANGUAGES)$/i));
     
     skills.push(...skillsList);
   }
   
-  // Strategy 2: Extract skills from the entire text
-  if (skills.length === 0) {
-    const techKeywords = [
-      'JavaScript', 'React', 'Node.js', 'Python', 'Java', 'C++', 'C#', 'PHP', 'Ruby', 'Go',
-      'TypeScript', 'Angular', 'Vue.js', 'Next.js', 'Express.js', 'Django', 'Flask', 'Laravel',
-      'MongoDB', 'MySQL', 'PostgreSQL', 'Redis', 'AWS', 'Azure', 'Google Cloud', 'Docker',
-      'Kubernetes', 'Git', 'GitHub', 'GitLab', 'Jenkins', 'Jira', 'Confluence', 'Figma',
-      'Adobe', 'Photoshop', 'Illustrator', 'InDesign', 'Sketch', 'Figma', 'InVision',
-      'HTML', 'CSS', 'Sass', 'Less', 'Bootstrap', 'Tailwind CSS', 'Material-UI',
-      'Redux', 'MobX', 'GraphQL', 'REST API', 'SOAP', 'Microservices', 'CI/CD',
-      'Agile', 'Scrum', 'Kanban', 'TDD', 'BDD', 'Unit Testing', 'Integration Testing',
-      'Firebase', 'ChatGPT', 'GitHub Copilot', 'Midjourney', 'OpenAI API', 'jQuery'
-    ];
+  // Strategy 2: Extract common technical skills from the entire text
+  const commonSkills = [
+    // Programming Languages
+    'JavaScript', 'Python', 'Java', 'C++', 'C#', 'PHP', 'Ruby', 'Go', 'Swift', 'Kotlin', 'TypeScript', 'Scala', 'Rust', 'Perl', 'R', 'MATLAB', 'SQL',
     
-    // Look for these keywords in the text
-    for (const keyword of techKeywords) {
-      if (text.toLowerCase().includes(keyword.toLowerCase())) {
-        skills.push(keyword);
-      }
+    // Web Technologies
+    'HTML', 'CSS', 'React', 'Angular', 'Vue.js', 'Node.js', 'Express.js', 'Next.js', 'Nuxt.js', 'Svelte', 'jQuery', 'Bootstrap', 'Tailwind CSS', 'Sass', 'Less',
+    
+    // Backend Frameworks
+    'Django', 'Flask', 'Spring', 'Laravel', 'Ruby on Rails', 'ASP.NET', 'Express', 'Koa', 'Fastify',
+    
+    // Databases
+    'MySQL', 'PostgreSQL', 'MongoDB', 'Redis', 'SQLite', 'Oracle', 'SQL Server', 'Cassandra', 'DynamoDB', 'Firebase',
+    
+    // Cloud & DevOps
+    'AWS', 'Azure', 'Google Cloud', 'Docker', 'Kubernetes', 'Jenkins', 'GitLab CI', 'GitHub Actions', 'Terraform', 'Ansible',
+    
+    // Tools & Software
+    'Git', 'GitHub', 'GitLab', 'Jira', 'Confluence', 'Slack', 'Trello', 'Asana', 'Figma', 'Adobe Creative Suite', 'Photoshop', 'Illustrator', 'InDesign', 'Sketch', 'InVision',
+    
+    // Mobile Development
+    'React Native', 'Flutter', 'iOS', 'Android', 'Xamarin', 'Ionic',
+    
+    // Data Science & AI
+    'Machine Learning', 'Deep Learning', 'TensorFlow', 'PyTorch', 'Pandas', 'NumPy', 'Scikit-learn', 'Jupyter', 'Tableau', 'Power BI',
+    
+    // Other Technologies
+    'GraphQL', 'REST API', 'SOAP', 'Microservices', 'Serverless', 'WebSockets', 'OAuth', 'JWT', 'Elasticsearch', 'Apache Kafka', 'RabbitMQ'
+  ];
+  
+  // Look for these skills in the text (case insensitive)
+  const textLower = text.toLowerCase();
+  for (const skill of commonSkills) {
+    if (textLower.includes(skill.toLowerCase()) && !skills.some(s => s.toLowerCase() === skill.toLowerCase())) {
+      skills.push(skill);
     }
   }
   
-  return skills;
+  // Remove duplicates and clean up
+  return [...new Set(skills)].filter(skill => skill && skill.length > 1);
 };
 
 /**
@@ -385,19 +527,39 @@ const extractLanguagesEnhanced = (text) => {
   
   if (!languagesSection) return languages;
   
+  // Common languages
+  const commonLanguages = ['English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese', 'Chinese', 'Japanese', 'Korean', 'Arabic', 'Russian', 'Hindi', 'Dutch', 'Swedish', 'Norwegian', 'Danish'];
+  const proficiencyLevels = ['Native', 'Fluent', 'Advanced', 'Intermediate', 'Basic', 'Beginner', 'Conversational'];
+  
   // Split by language entries
   const entries = languagesSection.split(/[,|•\n]/);
   
   for (const entry of entries) {
     if (entry.trim().length === 0) continue;
     
-    // Look for language name and proficiency
-    const languageMatch = entry.match(/([A-Z][a-zA-Z\s]+)(?:\s*[-–]\s*(Native|Fluent|Advanced|Intermediate|Basic|Beginner))?/);
+    const trimmedEntry = entry.trim();
     
-    if (languageMatch) {
-      const language = languageMatch[1].trim();
-      const proficiency = languageMatch[2] || 'Intermediate';
-      
+    // Look for language name and proficiency
+    let language = '';
+    let proficiency = 'Intermediate';
+    
+    // Check if entry contains a common language
+    for (const lang of commonLanguages) {
+      if (trimmedEntry.toLowerCase().includes(lang.toLowerCase())) {
+        language = lang;
+        break;
+      }
+    }
+    
+    // Check for proficiency level
+    for (const level of proficiencyLevels) {
+      if (trimmedEntry.toLowerCase().includes(level.toLowerCase())) {
+        proficiency = level;
+        break;
+      }
+    }
+    
+    if (language) {
       languages.push({
         language,
         proficiency
@@ -417,41 +579,44 @@ const extractCertificationsEnhanced = (text) => {
   const certifications = [];
   
   // Look for certifications section
-  const certificationsSection = extractSectionEnhanced(text, ['CERTIFICATIONS', 'CERTIFICATES', 'LICENSES']);
+  const certificationsSection = extractSectionEnhanced(text, ['CERTIFICATIONS', 'CERTIFICATES', 'LICENSES', 'CREDENTIALS']);
   
   if (!certificationsSection) return certifications;
   
-  // Split by certification entries
-  const entries = certificationsSection.split(/\n(?=[A-Z][A-Z\s]+)/);
+  const lines = certificationsSection.split('\n').filter(line => line.trim().length > 0);
   
-  for (const entry of entries) {
-    if (entry.trim().length === 0) continue;
+  for (const line of lines) {
+    const trimmedLine = line.trim();
     
-    const lines = entry.split('\n').filter(line => line.trim().length > 0);
-    if (lines.length === 0) continue;
+    if (trimmedLine.length < 5) continue;
     
-    const firstLine = lines[0];
-    
-    // Look for certification name
-    const nameMatch = firstLine.match(/([A-Z][a-zA-Z\s]+(?:Certification|Certificate|License|AWS|Azure|Google|Microsoft|Cisco|Oracle|Adobe|Salesforce))/);
-    const name = nameMatch ? nameMatch[0].trim() : firstLine.trim();
-    
-    // Look for issuing organization
-    const issuerMatch = firstLine.match(/([A-Z][a-zA-Z\s]+(?:Corporation|Inc|LLC|Institute|University|College|Academy))/);
-    const issuer = issuerMatch ? issuerMatch[0].trim() : '';
+    // Extract certification name (everything before date or issuer)
+    let name = trimmedLine;
+    let issuer = '';
+    let date = '';
     
     // Look for date
-    const dateMatch = firstLine.match(/(\d{4}(?:-\d{2})?)/);
-    const date = dateMatch ? dateMatch[0] : '';
+    const dateMatch = trimmedLine.match(/(\d{4}(?:-\d{2})?)/);
+    if (dateMatch) {
+      date = dateMatch[0];
+      name = trimmedLine.replace(dateMatch[0], '').trim();
+    }
     
-    // Description is everything else
-    const description = lines.slice(1).join('\n').trim();
+    // Look for issuer
+    const issuerKeywords = ['Microsoft', 'Google', 'Amazon', 'AWS', 'Oracle', 'Cisco', 'Adobe', 'Salesforce', 'IBM', 'CompTIA', 'PMI'];
+    for (const keyword of issuerKeywords) {
+      if (trimmedLine.includes(keyword)) {
+        issuer = keyword;
+        name = name.replace(keyword, '').trim();
+        break;
+      }
+    }
     
     certifications.push({
-      name,
+      name: name.replace(/^[-•*]\s*/, '').trim(),
       issuer,
       date,
-      description
+      description: ''
     });
   }
   
@@ -467,96 +632,85 @@ const extractProjectsEnhanced = (text) => {
   const projects = [];
   
   // Strategy 1: Look for projects section
-  const projectsSection = extractSectionEnhanced(text, ['PROJECTS', 'PERSONAL PROJECTS', 'ACADEMIC PROJECTS', 'PORTFOLIO']);
+  const projectsSection = extractSectionEnhanced(text, ['PROJECTS', 'PERSONAL PROJECTS', 'ACADEMIC PROJECTS', 'PORTFOLIO', 'KEY PROJECTS']);
   
   if (projectsSection) {
-    // Split by project entries
-    const entries = projectsSection.split(/\n(?=[A-Z][A-Z\s]+)/);
+    const lines = projectsSection.split('\n').filter(line => line.trim().length > 0);
     
-    for (const entry of entries) {
-      if (entry.trim().length === 0) continue;
+    let currentProject = null;
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
       
-      const lines = entry.split('\n').filter(line => line.trim().length > 0);
-      if (lines.length === 0) continue;
-      
-      const firstLine = lines[0];
-      
-      // Split by pipe or vertical bar to separate title from technologies
-      const parts = firstLine.split(/[\|\|]/);
-      
-      const title = parts[0].trim();
-      const techString = parts.length > 1 ? parts[1].trim() : '';
-      
-      // Parse technologies as a list
-      const technologies = techString
-        .split(/[,]/)
-        .map(tech => tech.trim())
-        .filter(tech => tech.length > 0);
-      
-      // Description is everything else
-      const description = lines.slice(1).join('\n').trim();
-      
-      projects.push({
-        title,
-        technologies,
-        description,
-        startDate: '',
-        endDate: ''
-      });
+      // Check if this line looks like a project title
+      if (trimmedLine.length > 5 && !trimmedLine.startsWith('•') && !trimmedLine.startsWith('-') && !trimmedLine.startsWith('*')) {
+        // Save previous project
+        if (currentProject) {
+          projects.push(currentProject);
+        }
+        
+        // Start new project
+        let title = trimmedLine;
+        let technologies = [];
+        
+        // Check if line contains technologies (separated by |, -, or :)
+        const techSeparators = ['|', ':', '–', '-'];
+        for (const separator of techSeparators) {
+          if (trimmedLine.includes(separator)) {
+            const parts = trimmedLine.split(separator);
+            title = parts[0].trim();
+            if (parts[1]) {
+              technologies = parts[1].split(',').map(tech => tech.trim()).filter(tech => tech.length > 0);
+            }
+            break;
+          }
+        }
+        
+        currentProject = {
+          title,
+          technologies,
+          description: '',
+          startDate: '',
+          endDate: ''
+        };
+      } else if (currentProject && (trimmedLine.startsWith('•') || trimmedLine.startsWith('-') || trimmedLine.startsWith('*'))) {
+        // Add to description
+        currentProject.description += (currentProject.description ? '\n' : '') + trimmedLine;
+      }
+    }
+    
+    if (currentProject) {
+      projects.push(currentProject);
     }
   }
   
   // Strategy 2: Look for project patterns in the entire text
   if (projects.length === 0) {
-    const lines = text.split('\n');
+    const projectPatterns = [
+      // Pattern for "Project Name | Technologies"
+      /([A-Z][A-Za-z\s]+)\s*\|\s*([A-Za-z\s,]+)/g,
+      // Pattern for "Project Name - Technologies"
+      /([A-Z][A-Za-z\s]+)\s*[-–]\s*([A-Za-z\s,]+)/g
+    ];
     
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      
-      // Look for lines that might be project titles (capitalized words) followed by technologies
-      if (line.match(/^[A-Z][a-zA-Z\s]+\s*\|\s*[A-Za-z\s,]+$/) && line.length > 3 && line.length < 100) {
-        // This looks like a project with technologies
-        const parts = line.split('|');
-        const title = parts[0].trim();
-        const techString = parts.length > 1 ? parts[1].trim() : '';
+    for (const pattern of projectPatterns) {
+      let match;
+      while ((match = pattern.exec(text)) !== null) {
+        const title = match[1].trim();
+        const techString = match[2].trim();
         
-        // Parse technologies as a list
         const technologies = techString
           .split(/[,]/)
           .map(tech => tech.trim())
-          .filter(tech => tech.length > 0);
-        
-        // Look for description in the next lines
-        let description = '';
-        let j = i + 1;
-        while (j < lines.length && lines[j].trim().startsWith('•')) {
-          description += lines[j].trim() + ' ';
-          j++;
-        }
+          .filter(tech => tech.length > 0 && tech.length < 30);
         
         projects.push({
           title,
           technologies,
-          description: description.trim(),
+          description: '',
           startDate: '',
           endDate: ''
         });
-      }
-      // Also look for project names without technologies
-      else if (line.match(/^[A-Z][a-zA-Z\s]+$/) && line.length > 3 && line.length < 50) {
-        // This might be a project title
-        const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
-        
-        if (nextLine && (nextLine.includes('•') || nextLine.includes('Developed') || nextLine.includes('Designed'))) {
-          // This looks like a project
-          projects.push({
-            title: line,
-            technologies: [],
-            description: nextLine,
-            startDate: '',
-            endDate: ''
-          });
-        }
       }
     }
   }
@@ -571,30 +725,29 @@ const extractProjectsEnhanced = (text) => {
  */
 const extractSummaryEnhanced = (text) => {
   // Strategy 1: Look for summary section
-  const summarySection = extractSectionEnhanced(text, ['SUMMARY', 'PROFESSIONAL SUMMARY', 'CAREER OBJECTIVE', 'OBJECTIVE', 'PROFILE', 'ABOUT']);
+  const summarySection = extractSectionEnhanced(text, ['SUMMARY', 'PROFESSIONAL SUMMARY', 'CAREER OBJECTIVE', 'OBJECTIVE', 'PROFILE', 'ABOUT', 'OVERVIEW']);
   
   if (summarySection) {
     return summarySection
-      .replace(/^(?:SUMMARY|PROFESSIONAL SUMMARY|CAREER OBJECTIVE|OBJECTIVE|PROFILE|ABOUT):?\s*/i, '')
+      .replace(/^(?:SUMMARY|PROFESSIONAL SUMMARY|CAREER OBJECTIVE|OBJECTIVE|PROFILE|ABOUT|OVERVIEW):?\s*/i, '')
       .trim();
   }
   
-  // Strategy 2: Look for the first paragraph that looks like a summary
-  const lines = text.split('\n');
-  for (const line of lines) {
-    const trimmedLine = line.trim();
-    if (trimmedLine.length > 50 && trimmedLine.length < 500 && 
-        (trimmedLine.includes('Developer') || trimmedLine.includes('Engineer') || 
-         trimmedLine.includes('skilled') || trimmedLine.includes('experienced'))) {
-      return trimmedLine;
+  // Strategy 2: Look for the first substantial paragraph that looks like a summary
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  
+  for (const line of lines.slice(0, 10)) { // Check first 10 lines
+    if (line.length > 50 && line.length < 500 && 
+        (line.includes('experience') || line.includes('skilled') || line.includes('professional') || 
+         line.includes('developer') || line.includes('engineer') || line.includes('manager'))) {
+      return line;
     }
   }
   
-  // Strategy 3: Return the first substantial paragraph
-  for (const line of lines) {
-    const trimmedLine = line.trim();
-    if (trimmedLine.length > 30) {
-      return trimmedLine;
+  // Strategy 3: Return the first paragraph that's long enough
+  for (const line of lines.slice(0, 5)) {
+    if (line.length > 30 && line.length < 300) {
+      return line;
     }
   }
   
@@ -608,25 +761,46 @@ const extractSummaryEnhanced = (text) => {
  * @returns {string|null} Section content or null if not found
  */
 const extractSectionEnhanced = (text, sectionHeaders) => {
-  // Try multiple patterns to find sections
+  const lines = text.split('\n');
+  
   for (const header of sectionHeaders) {
-    // Pattern 1: Header followed by content until next section
-    const pattern1 = new RegExp(`${header}[\\s\\S]*?(?=(EDUCATION|EXPERIENCE|SKILLS|LANGUAGES|CERTIFICATIONS|PROJECTS|SUMMARY|PROFESSIONAL|WORK|EMPLOYMENT|ACADEMIC|PERSONAL|CONTACT|REFERENCES|$))`, 'i');
-    let match = text.match(pattern1);
-    if (match) return match[0].replace(new RegExp(`^${header}`, 'i'), '').trim();
-    
-    // Pattern 2: Header with colon
-    const pattern2 = new RegExp(`${header}:\\s*([\\s\\S]*?)(?=(EDUCATION|EXPERIENCE|SKILLS|LANGUAGES|CERTIFICATIONS|PROJECTS|SUMMARY|PROFESSIONAL|WORK|EMPLOYMENT|ACADEMIC|PERSONAL|CONTACT|REFERENCES|$))`, 'i');
-    match = text.match(pattern2);
-    if (match) return match[1].trim();
-    
-    // Pattern 3: Header with line break
-    const pattern3 = new RegExp(`${header}\\s*\\n([\\s\\S]*?)(?=(EDUCATION|EXPERIENCE|SKILLS|LANGUAGES|CERTIFICATIONS|PROJECTS|SUMMARY|PROFESSIONAL|WORK|EMPLOYMENT|ACADEMIC|PERSONAL|CONTACT|REFERENCES|$))`, 'i');
-    match = text.match(pattern3);
-    if (match) return match[1].trim();
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Check if line matches header (case insensitive, with optional colons/dashes)
+      if (line.match(new RegExp(`^${header}[:\\s-]*$`, 'i'))) {
+        // Found header, collect content until next section
+        let content = '';
+        let j = i + 1;
+        
+        while (j < lines.length) {
+          const nextLine = lines[j].trim();
+          
+          // Check if this is the start of another section
+          const sectionKeywords = ['EDUCATION', 'EXPERIENCE', 'SKILLS', 'LANGUAGES', 'CERTIFICATIONS', 'PROJECTS', 'SUMMARY', 'PROFESSIONAL', 'WORK', 'EMPLOYMENT', 'ACADEMIC', 'PERSONAL', 'CONTACT', 'REFERENCES', 'OBJECTIVE', 'PROFILE', 'ABOUT', 'OVERVIEW'];
+          const isNewSection = sectionKeywords.some(keyword => 
+            nextLine.match(new RegExp(`^${keyword}[:\\s-]*$`, 'i'))
+          );
+          
+          if (isNewSection) {
+            break;
+          }
+          
+          if (nextLine.length > 0) {
+            content += (content ? '\n' : '') + nextLine;
+          }
+          
+          j++;
+        }
+        
+        if (content.trim().length > 0) {
+          return content.trim();
+        }
+      }
+    }
   }
   
   return null;
 };
 
-export default parseResumeEnhanced; 
+export default parseResumeEnhanced;
