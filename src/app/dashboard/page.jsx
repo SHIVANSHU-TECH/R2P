@@ -7,9 +7,9 @@ import { motion } from 'framer-motion';
 import ResumeUpload from '../../components/dashboard/ResumeUpload';
 import ManualForm from '../../components/dashboard/ManualForm';
 import ThemeCustomizer from '../../components/dashboard/ThemeCustomizer';
-// import PreviewPane from "../../components/dashboard/PreviewPane";
+import PreviewPane from "../../components/dashboard/PreviewPane";
 import { PortfolioProvider, usePortfolio } from '@/contexts/PortfolioContext'; // Import usePortfolio hook
-import { FiUpload, FiEdit, FiSettings, FiUser, FiLogOut, FiExternalLink } from 'react-icons/fi';
+import { FiUpload, FiEdit, FiSettings, FiUser, FiLogOut, FiExternalLink, FiGlobe } from 'react-icons/fi';
 
 export default function Dashboard() {
   const { user, loading, logout } = useAuth();
@@ -51,7 +51,7 @@ function DashboardContent({
   router 
 }) {
   // Get portfolioData and themeConfig from context
-  const { portfolioData, themeConfig } = usePortfolio();
+  const { portfolioData, themeConfig, updateData } = usePortfolio();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -84,11 +84,33 @@ function DashboardContent({
     return Math.round((filledFields / totalFields) * 100);
   };
 
+  const handleResumeParseComplete = (parsedData) => {
+    // Update portfolio data with parsed resume data
+    if (parsedData.personalInfo) {
+      updateData('personalInfo', parsedData.personalInfo);
+    }
+    if (parsedData.experience) {
+      updateData('experience', parsedData.experience);
+    }
+    if (parsedData.education) {
+      updateData('education', parsedData.education);
+    }
+    if (parsedData.skills) {
+      updateData('skills', parsedData.skills);
+    }
+    if (parsedData.projects) {
+      updateData('projects', parsedData.projects);
+    }
+    if (parsedData.certifications) {
+      updateData('certifications', parsedData.certifications);
+    }
+    
+    setActiveTab('customize');
+  };
+
   if (loading || !user) {
     return null; // Loading component will handle the loading state
   }
-
-  
 
   const tabVariants = {
     inactive: { opacity: 0.6, y: 5 },
@@ -219,7 +241,7 @@ function DashboardContent({
                   animate="visible"
                 >
                   {activeTab === 'upload' && (
-                    <ResumeUpload onParseComplete={() => setActiveTab('customize')} />
+                    <ResumeUpload onParseComplete={handleResumeParseComplete} />
                   )}
                   {activeTab === 'manual' && (
                     <ManualForm onComplete={() => setActiveTab('customize')} />
@@ -244,8 +266,7 @@ function DashboardContent({
                 <div className="p-1">
                   <div className="relative h-40 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-600">
                     <div className="absolute inset-0 flex items-center justify-center">
-                    {/* <PreviewPane /> */}
-                      <span className="text-gray-500 dark:text-gray-400">Portfolio Preview</span>
+                      <PreviewPane />
                     </div>
                   </div>
                 </div>
@@ -274,13 +295,28 @@ function DashboardContent({
                     Last edited: {portfolioPreview.lastEdited}
                   </div>
                   
-                  <button 
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors flex items-center justify-center space-x-2"
-                    onClick={() => router.push(`/portfolio/preview`)}
-                  >
-                    <FiExternalLink size={16} />
-                    <span>Preview Portfolio</span>
-                  </button>
+                  <div className="space-y-2">
+                    <button 
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors flex items-center justify-center space-x-2"
+                      onClick={() => router.push(`/portfolio/preview`)}
+                    >
+                      <FiExternalLink size={16} />
+                      <span>Preview Portfolio</span>
+                    </button>
+                    
+                    <button 
+                      className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md transition-colors flex items-center justify-center space-x-2"
+                      onClick={() => {
+                        // Save current data to localStorage
+                        localStorage.setItem('themeConfig', JSON.stringify(themeConfig));
+                        localStorage.setItem('portfolioData', JSON.stringify(portfolioData));
+                        router.push('/portfolio/publish');
+                      }}
+                    >
+                      <FiGlobe size={16} />
+                      <span>Publish Portfolio</span>
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             )}

@@ -1,79 +1,44 @@
 import { NextResponse } from 'next/server';
-import { parseResume } from '../../../lib/ResumeParse';
-import { storage, db } from '../../../lib/firebase/firebase'; // Import your Firebase config
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { parseResumeEnhanced } from '../../../lib/ResumeParseEnhanced.server';
 
-export const runtime = 'nodejs';
 export async function POST(request) {
   try {
-    // Parse the FormData
     const formData = await request.formData();
     const file = formData.get('file');
-    
+
     if (!file) {
-      return NextResponse.json(
-        { success: false, error: 'No file uploaded' }, 
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
-    
-    // Get file type
-    const fileType = file.type === 'application/pdf' ? 'pdf' : 
-                    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? 'docx' : 
-                    null;
-    
+
+    // Check file type
+    const fileName = file.name.toLowerCase();
+    const fileType = fileName.endsWith('.pdf') ? 'pdf' : 
+                    fileName.endsWith('.docx') ? 'docx' : null;
+
     if (!fileType) {
-      return NextResponse.json(
-        { success: false, error: 'Unsupported file type. Please upload a PDF or DOCX file.' }, 
-        { status: 400 }
-      );
+      return NextResponse.json({ 
+        error: 'Unsupported file type. Please upload a PDF or DOCX file.' 
+      }, { status: 400 });
     }
-    
-    // Convert to buffer
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    
-    // Parse resume using the imported function
-    const resumeData = await parseResume(buffer, fileType);
-    
-    // Upload to Firebase Storage
-    const timestamp = new Date().getTime();
-    const fileName = `resumes/${timestamp}_${file.name}`;
-    const storageRef = ref(storage, fileName);
-    
-    // Upload the file
-    await uploadBytes(storageRef, buffer);
-    const downloadURL = await getDownloadURL(storageRef);
-    
-    // Store metadata and parsed data in Firestore
-    const resumeDoc = await addDoc(collection(db, 'resumes'), {
-      fileName: file.name,
-      fileURL: downloadURL,
-      fileType,
-      parsedData: resumeData,
-      createdAt: serverTimestamp()
+
+    // Convert file to buffer
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+
+    // Parse the resume using enhanced parser
+    const parsedData = await parseResumeEnhanced(buffer, fileType);
+
+    console.log('Resume parsed successfully:', parsedData);
+
+    return NextResponse.json({
+      success: true,
+      data: parsedData
     });
-    
-    // Return success with parsed data and document ID
-    return NextResponse.json({ 
-      success: true, 
-      data: {
-        id: resumeDoc.id,
-        ...resumeData,
-        fileURL: downloadURL
-      }
-    });
-    
+
   } catch (error) {
     console.error('Resume parsing error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Failed to parse resume', 
-        details: error.message 
-      }, 
-      { status: 500 }
-    );
+    return NextResponse.json({ 
+      error: 'Failed to parse resume. Please try again.' 
+    }, { status: 500 });
   }
 }
